@@ -8,7 +8,13 @@ import com.hch.hch_backend.modules.users.entity.User;
 import com.hch.hch_backend.modules.users.entity.UserRole;
 import com.hch.hch_backend.modules.users.repository.RoleRepository;
 import com.hch.hch_backend.modules.users.repository.UserRoleRepository;
+import com.hch.hch_backend.security.jwt.RefreshToken;
 import com.hch.hch_backend.modules.users.repository.UserRepository;
+
+import com.hch.hch_backend.security.jwt.JwtService;
+import com.hch.hch_backend.security.jwt.RefreshToken;
+import com.hch.hch_backend.security.jwt.RefreshTokenService;
+
 
 import lombok.RequiredArgsConstructor;
 
@@ -26,6 +32,8 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final UserRoleRepository userRoleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
     
     // Registration method
     public AuthResponse register(RegisterRequest request) {
@@ -65,6 +73,34 @@ public class AuthService {
 
     // Login method
     public AuthResponse login(LoginRequest request) {
-        throw new UnsupportedOperationException("Login not implemented yet");
+
+        User user = userRepository.findByEmail(request.getEmail())
+                .orElseThrow(() -> new RuntimeException("User not found"));
+
+        if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+            throw new RuntimeException("Invalid password");
+        }
+
+        // Generate JWT
+        String accessToken = jwtService.generateToken(user.getEmail());
+
+        // Create Refresh Token
+        RefreshToken refreshToken = refreshTokenService.createRefreshToken(user);
+
+        // Fetch role
+        UserRole userRole = userRoleRepository.findAll()
+                .stream()
+                .filter(ur -> ur.getUser().getId().equals(user.getId()))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Role not assigned"));
+
+        return AuthResponse.builder()
+                .accessToken(accessToken)
+                .refreshToken(refreshToken.getToken())
+                .userId(user.getId())
+                .email(user.getEmail())
+                .role(userRole.getRole().getName())
+                .build();
     }
+
 }
